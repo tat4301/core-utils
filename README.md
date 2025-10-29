@@ -2,7 +2,7 @@
 
 This project is a simulation of a core component for a decentralized cross-chain bridge. It acts as an off-chain oracle or relayer that listens for specific events on a source blockchain (e.g., Ethereum) and simulates the corresponding action on a destination blockchain (e.g., Polygon).
 
-This script is designed with a focus on architectural clarity, robustness, and modularity, showcasing how such a system would be structured in a production environment.
+This script showcases a production-ready architecture for such a system, focusing on clarity, robustness, and modularity.
 
 ## Concept
 
@@ -11,7 +11,7 @@ A cross-chain bridge allows users to transfer assets or data from one blockchain
 1.  A user **locks** tokens in a smart contract on the **source chain**.
 2.  This action emits an event (e.g., `TokensLocked`).
 3.  An off-chain listener (this script) detects and verifies this event.
-4.  After ensuring the event is final (i.e., has enough block confirmations to be safe from re-orgs), the listener triggers an action on the **destination chain**.
+4.  After ensuring the event is final (i.e., has enough block confirmations to be safe from chain reorganizations (re-orgs)), the listener triggers an action on the **destination chain**.
 5.  This action is typically a signed transaction that instructs a contract on the destination chain to **mint** an equivalent amount of a pegged token for the user.
 
 This event listener is the critical link between the two chains, ensuring that events on the source chain are securely and reliably relayed to the destination chain.
@@ -46,25 +46,25 @@ The script is designed with a clear separation of concerns, broken down into sev
 [ChainConnector] <--( interacts with node )--> [CrossChainEventListener]
         |
         v (new event detected)
-[TransactionStateManager] --( stores as PENDING )--> [CrossChainEventListener]
+[TransactionStateManager] --( updates state to PENDING )--> [CrossChainEventListener]
         |
         v (checks confirmations)
-[BridgeEventProcessor] --( marks as CONFIRMED )--> [TransactionStateManager]
+[BridgeEventProcessor] --( updates state to CONFIRMED )--> [TransactionStateManager]
         |
         v (processes confirmed event)
-[BridgeEventProcessor] --( simulates tx )--> [Destination Chain]
-        |                                       (via ChainConnector)
+[BridgeEventProcessor] --( simulates destination tx )--> [Destination Chain]
+        |                                                 (via ChainConnector)
         v (notifies external service)
 [requests] --> [External API]
         |
-        v (marks as PROCESSED)
+        v (updates state to PROCESSED)
 [BridgeEventProcessor] --> [TransactionStateManager]
 ```
 
 ## How it Works
 
 1.  **Initialization**: The `CrossChainEventListener` is instantiated. It creates `ChainConnector` instances for both the source and destination chains and initializes the `TransactionStateManager` and `BridgeEventProcessor`.
-2.  **Event Filter**: It creates an event filter on the source chain's bridge contract to listen for `TokensLocked` events from the latest block onwards.
+2.  **Event Filter**: It creates an event filter on the source chain's bridge contract to listen for new `TokensLocked` events.
 3.  **Polling Loop**: The `run()` method starts an infinite `asyncio` loop.
 4.  **Fetch New Events**: In each iteration, it calls `event_filter.get_new_entries()` to fetch any new events that have occurred since the last poll. New events are added to the `TransactionStateManager` with the status `PENDING_CONFIRMATION`.
 5.  **Check Confirmations**: The `BridgeEventProcessor` checks all transactions in the `PENDING_CONFIRMATION` state. It compares the block number where the event was detected against the current latest block number. If the difference (`latest_block - event_block`) is greater than or equal to `BLOCK_CONFIRMATIONS_REQUIRED`, it updates the transaction's status to `CONFIRMED`.
@@ -72,7 +72,7 @@ The script is designed with a clear separation of concerns, broken down into sev
 7.  **Finalize State**: After successful processing, the transaction's status is updated to `PROCESSED`.
 8.  **Error Handling**: The main loop includes robust error handling. If a connection to a node is lost, it enters a reconnection routine with a delay. Other unexpected errors are logged, and the loop continues after a brief pause.
 
-## Usage Example
+## Usage
 
 ### 1. Prerequisites
 
@@ -84,21 +84,21 @@ The script is designed with a clear separation of concerns, broken down into sev
 Clone the repository and install the required dependencies.
 
 ```bash
-# Clone the repository (example)
+# Clone the repository (if you haven't already)
 # git clone https://github.com/your-username/core-utils.git
 # cd core-utils
 
 # Create and activate a virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
 
-# Install dependencies
+# Install dependencies from the requirements file
 pip install -r requirements.txt
 ```
 
 ### 3. Configuration
 
-Create a `.env` file in the root of the project directory and add your RPC URLs. This file is used to securely manage sensitive information.
+Create a `.env` file in the root of the project directory and add your RPC URLs. This file is used to securely manage sensitive information and is ignored by Git.
 
 **.env file:**
 ```
@@ -106,9 +106,42 @@ SOURCE_CHAIN_RPC_URL="https://your-sepolia-rpc-url.com/your-api-key"
 DEST_CHAIN_RPC_URL="https://your-polygon-mumbai-rpc-url.com/your-api-key"
 ```
 
-**Note**: The script uses mock contract addresses (`0x123...`). For a real test, you would need to deploy corresponding smart contracts and update these addresses in the script.
+**Note**: The script uses mock contract addresses (`0x123...`). To test this against live testnets, you would need to deploy corresponding smart contracts and update the addresses in the script.
 
-### 4. Running the Script
+### 4. Core Logic Example
+
+The main script (`script.py`) initializes and runs the listener. The core execution block demonstrates how the components are brought together.
+
+```python
+# (Inside script.py)
+import asyncio
+import os
+from dotenv import load_dotenv
+
+from listener import CrossChainEventListener
+
+# Load environment variables from .env file
+load_dotenv()
+
+async def main():
+    """Initializes and runs the event listener."""
+    listener = CrossChainEventListener(
+        source_rpc_url=os.getenv("SOURCE_CHAIN_RPC_URL"),
+        dest_rpc_url=os.getenv("DEST_CHAIN_RPC_URL"),
+        # Contract address and ABI would be defined elsewhere in the script
+        # source_contract_address=SOURCE_BRIDGE_CONTRACT_ADDRESS,
+        # source_contract_abi=SOURCE_BRIDGE_CONTRACT_ABI,
+    )
+    await listener.run()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nService shut down by user.")
+```
+
+### 5. Running the Script
 
 Execute the Python script from your terminal.
 
@@ -116,9 +149,9 @@ Execute the Python script from your terminal.
 python script.py
 ```
 
-### 5. Sample Output
+### 6. Sample Output
 
-The listener will start and begin logging its activities. Since no real events will be emitted by the mock contract, it will continuously poll for new blocks and check its (empty) state. If you were to interact with a real contract, the output would look something like this:
+The listener will start and begin logging its activities. Since no real events will be emitted by the mock contract, it will continuously poll for new blocks and check its (empty) state. If you were to interact with a real contract, the output would look similar to this:
 
 ```
 2023-10-27 10:30:00 - INFO - [__main__] - Successfully connected to SourceChain. Chain ID: 11155111
