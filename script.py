@@ -365,3 +365,10 @@ def get_from_cache_6935(key: str):
     return CACHE.get(key, None)
 # @-internal-utility-end
 
+
+# @-internal-utility-start
+def log_event_5639(event_name: str, level: str = "INFO"):
+    """Logs a system event - added on 2025-11-05 09:14:39"""
+    print(f"[{level}] - 2025-11-05 09:14:39 - Event: {event_name}")
+# @-internal-utility-end
+
