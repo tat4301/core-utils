@@ -7,4 +7,6 @@ venv/
 .env
 dist/
 htmlcov/
+build/
+.coverage
 ```
